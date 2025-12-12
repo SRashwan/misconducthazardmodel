@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harassment Reporting Decision Simulator</title>
+    <!-- Load Tailwind CSS from the standard CDN (including the config engine) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        // Tailwind Configuration must run AFTER the Tailwind script is loaded
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        // Dark mode palette
+                        darkBg: '#1a1a1a',
+                        darkCard: '#2c2c2c',
+                        darkText: '#f3f4f6',
+                        benefit: '#34D399',  /* Emerald-400 */
+                        cost: '#F87171',     /* Red-400 */
+                        report: '#60A5FA',   /* Blue-400 */
+                        noReport: '#FBBF24', /* Amber-400 */
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Load MathJax for rendering LaTeX equations -->
+    <script type="text/javascript" id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+    <script>
+        // Configure MathJax to use \( and \) for inline math
+        window.MathJax = {
+            tex: {
+                // Using $ for inline math is often more robust for dynamic content
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            },
+            options: {
+                ignoreHtmlClass: 'tex2jax_ignore',
+                processHtmlClass: 'tex2jax_process'
+            }
+        };
+    </script>
+    
+    <!-- Load Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+
+    <style>
+        /* Base styling for controls in dark mode */
+        .level-btn {
+            background-color: #374151; /* gray-700 */
+            color: #f3f4f6;
+            font-weight: 500;
+            border: 2px solid transparent;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap; /* Prevent "Low" buttons from wrapping */
+        }
+
+        /* Active states for benefit controls */
+        .level-btn[data-type="benefit"].active {
+            background-color: #059669; /* Emerald-600 */
+            border-color: #34D399; /* Benefit color */
+            transform: scale(1.05);
+        }
+
+        /* Active states for cost controls */
+        .level-btn[data-type="cost"].active {
+            background-color: #DC2626; /* Red-600 */
+            border-color: #F87171; /* Cost color */
+            transform: scale(1.05);
+        }
+
+        /* Active states for intermediate controls */
+        .level-btn[data-type="intermediate"].active {
+            background-color: #3B82F6; /* Blue-500 */
+            border-color: #60A5FA; /* Report color */
+            transform: scale(1.05);
+        }
+
+        /* Classes for dynamic transition effects */
+        .transition-colors-all {
+            transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, transform 0.2s ease;
+        }
+
+        /* Equation display helper */
+        .equation {
+            font-size: 1rem; /* Slightly smaller for mobile */
+            font-family: sans-serif;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            background-color: #1f2937; /* Darker background for equations */
+        }
+        .eq-variable {
+            font-style: italic;
+            font-weight: bold;
+            color: #60A5FA; /* Blue for variables */
+        }
+        .eq-output {
+            color: #34D399; /* Green for outputs */
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-darkBg min-h-screen p-4 sm:p-6 font-sans text-darkText">
+
+    <!-- Main Content Wrapper -->
+    <div class="max-w-6xl mx-auto">
+        
+        <!-- Header Area -->
+        <div id="header-area" class="bg-darkBg pt-2 sm:pt-4 pb-4 sm:pb-6">
+            
+            <!-- Main Title and Description -->
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-white mb-3 text-center">
+                ⚖️ Misconduct Hazard & Reporting Decision Simulator
+            </h1>
+
+            <!-- Author Credit -->
+            <p class="text-center text-sm text-gray-500 mb-2">
+                Model & Simulation By: <span class="font-semibold text-gray-300">Sherif Rashwan</span>
+            </p>
+            
+            <p class="text-center text-gray-400 mb-6 text-sm">
+                This model integrates the likelihood of misconduct (Hazard), its severity, and the victim's rational decision (Net Utility).
+            </p>
+
+            <!-- Model Summary and Intermediate Results -->
+            <div class="grid md:grid-cols-3 gap-3 mb-6 p-4 rounded-xl bg-gray-800 border border-gray-700 shadow-xl">
+                <div class="p-3 rounded-lg bg-gray-900 shadow-lg">
+                    <p class="text-xs font-semibold text-gray-400">Propensity Score (\(\Pi^{per}_i\))</p>
+                    <div id="propensity-score" class="text-2xl font-bold text-report">0.0</div>
+                </div>
+                <div class="p-3 rounded-lg bg-gray-900 shadow-lg">
+                    <p class="text-xs font-semibold text-gray-400">Hazard Rate (\(\lambda^{har}\))</p>
+                    <div id="hazard-score" class="text-2xl font-bold text-report">0.0</div>
+                </div>
+                <div class="p-3 rounded-lg bg-gray-900 shadow-lg">
+                    <p class="text-xs font-semibold text-gray-400">Event Severity (\(S_{ij}\))</p>
+                    <div id="severity-score" class="text-2xl font-bold text-report">0.0</div>
+                </div>
+            </div>
+        </div>
+        <!-- END Header Area -->
+
+
+        <!-- Dynamic Scenario and Input Grid -->
+        <div class="p-4 sm:p-6 bg-gray-900 rounded-xl shadow-2xl border border-gray-700 transition-colors-all mb-8" id="scenario-card">
+            
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3">
+                <h2 class="text-xl sm:text-2xl font-bold text-white">
+                    Dynamic Scenario: Adjust Model Inputs
+                </h2>
+                <!-- SWEEP BUTTON -->
+                <button id="sweep-button" class="mt-3 sm:mt-0 px-4 py-2 bg-report hover:bg-report/80 text-white font-semibold rounded-lg shadow-md transition-colors-all flex items-center disabled:opacity-50" title="Run a simulation sweep across 1007 key scenarios">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197 3.197 2.13 5.323 5.32-2.13-3.196-3.197zM2.81 12.01l4.24-4.24 3.75 9.375-3.75-9.374z"></path></svg>
+                    Sweep Simulation (1007 Scenarios)
+                </button>
+            </div>
+            
+            <div class="text-gray-400 mb-4 flex flex-col sm:flex-row justify-between text-sm">
+                <span>Coefficients (\(\alpha, \sigma, \kappa, \rho, \xi\)) are 1.0.</span>
+                <span class="font-medium">Current Net Utility: <span class="text-lg font-bold" id="current-score-summary">0.0</span></span>
+            </div>
+            
+            <div class="grid lg:grid-cols-3 gap-4">
+                
+                <!-- STAGE 1: Perpetrator Propensity (Eq 7) -->
+                <div class="p-3 bg-gray-800 rounded-lg border border-report/30 shadow-md">
+                    <h3 class="text-lg font-semibold text-report mb-2">1. Perpetrator Propensity</h3>
+                    <div class="equation mb-3">
+                        <span class="eq-output">\(\Pi^{per}_i\)</span> = \(\alpha_0 + \alpha_b B(B_i) + \alpha_h H^{past}_i + \alpha_c C(t)\) (6)
+                    </div>
+
+                    <!-- Perpetrator Badness (B_i) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Perpetrator Badness (\(B_i\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="badness">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="badness-qualitative">Moderate inherent tendency toward misconduct.</p>
+                        <span class="hidden" data-id="badness-val">50</span>
+                    </div>
+
+                    <!-- History (H_past) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Harassment History (\(H^{past}_i\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="history">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="history-qualitative">Few or mild previous incidents recorded.</p>
+                        <span class="hidden" data-id="history-val">50</span>
+                    </div>
+
+                    <!-- Monitoring (C(t)) -->
+                    <div class="mb-0">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Current Monitoring (\(C(t)\))
+                        </label>
+                        <div class="flex space-space-x-2 mb-1" data-input-id="monitoring">
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">High</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Medium</button>
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="monitoring-qualitative">Strong, proactive monitoring reduces hazard.</p>
+                        <span class="hidden" data-id="monitoring-val">75</span>
+                    </div>
+                </div>
+
+                <!-- STAGE 2: Hazard & Severity (Eq 6 & 8) -->
+                <div class="p-3 bg-gray-800 rounded-lg border border-report/30 shadow-md">
+                    <h3 class="text-lg font-semibold text-report mb-2">2. Event Hazard & Severity</h3>
+                    
+                    <div class="equation mb-3">
+                        <span class="eq-output">\(\lambda^{har}_{ij,E}(t)\)</span> = \(\sigma \Pi^{per}_i +\Omega_{ij,E}+S_E-\Lambda_E\) (6)
+                    </div>
+                    <div class="equation mb-3">
+                        \(Pr(s_{ij}\leq x)\) = \(G(x; \kappa_0+\kappa_1 \Pi^{per}_i +\kappa_2 \text{Power}_{ij}-\kappa_3 \Lambda_E)\) (8)
+                    </div>
+
+                    <!-- Org Factors (Omega) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Org. Factors (\(\Omega_{ij,E}\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="orgfactors">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="orgfactors-qualitative">Standard, neutral organizational climate.</p>
+                        <span class="hidden" data-id="orgfactors-val">50</span>
+                    </div>
+
+                    <!-- Target Sensitivity (S_E) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Target Sensitivity (\(S_E\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="sensitivity">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="sensitivity-qualitative">Average sensitivity/risk perception.</p>
+                        <span class="hidden" data-id="sensitivity-val">50</span>
+                    </div>
+
+                    <!-- Power Dynamic (Power) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Power Dynamic (\(\text{Power}_{ij}\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="power">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="power-qualitative">Perpetrator has moderate authority over target.</p>
+                        <span class="hidden" data-id="power-val">50</span>
+                    </div>
+
+                    <!-- Org Intervention (Lambda) -->
+                    <div class="mb-0">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Org. Intervention (\(\Lambda_E\))
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="intervention">
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="intermediate">High</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Medium</button>
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="intermediate">Low</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="intervention-qualitative">Strong, effective policies are in place.</p>
+                        <span class="hidden" data-id="intervention-val">75</span>
+                    </div>
+                </div>
+
+                <!-- STAGE 3: Reporting Decision (Eq 9) -->
+                <div class="p-3 bg-gray-800 rounded-lg border border-benefit/30 shadow-md">
+                    <h3 class="text-lg font-semibold text-benefit mb-2">3. Reporting Decision</h3>
+                    <div class="equation mb-3">
+                        <span class="eq-output">\(\text{Report}_j\)</span> = \(1 \quad \text{if} \quad \rho_b E[\text{Sanction}] + \rho_s \text{Support} - \xi_1 \text{Stigma} - \xi_2 \text{Retaliation} > 0\) (9)
+                    </div>
+                    
+                    <h4 class="text-base font-medium text-benefit mb-2 mt-2">Incentives (Benefits)</h4>
+
+                    <!-- Expected Sanction (E[Sanction]) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            E[Sanction] (Base Policy Strength)
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="sanction">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="benefit">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="benefit">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="benefit">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="sanction-qualitative">Moderate chance of disciplinary action.</p>
+                        <span class="hidden" data-id="sanction-val">50</span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Effective E[Sanction] (Severity-Adjusted)
+                        </label>
+                        <p id="effective-sanction-display" class="text-lg font-bold text-benefit h-6">50.0</p>
+                    </div>
+
+                    <!-- Expected Support (Support) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Support
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="support">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="benefit">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="benefit">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="benefit">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="support-qualitative">Reliable support network available.</p>
+                        <span class="hidden" data-id="support-val">50</span>
+                    </div>
+
+                    <h4 class="text-base font-medium text-cost mb-2 mt-4">Barriers (Costs)</h4>
+
+                    <!-- Stigma Risk (Stigma) -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Stigma
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="stigma">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="cost">Low</button>
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="cost">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="cost">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="stigma-qualitative">Noticeable but manageable social discomfort.</p>
+                        <span class="hidden" data-id="stigma-val">50</span>
+                    </div>
+
+                    <!-- Retaliation Risk (Retaliation) -->
+                    <div class="mb-0">
+                        <label class="block text-xs font-medium text-gray-300 mb-1">
+                            Retaliation
+                        </label>
+                        <div class="flex space-x-2 mb-1" data-input-id="retaliation">
+                            <button data-value="25" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="cost">Low</button>
+                            <!-- FIX: Added 'level-btn' class here -->
+                            <button data-value="50" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all active" data-type="cost">Medium</button>
+                            <button data-value="75" class="level-btn w-1/3 py-1.5 text-xs rounded-lg transition-colors-all" data-type="cost">High</button>
+                        </div>
+                        <p class="text-xs italic h-6 text-gray-500" id="retaliation-qualitative">Recognized but containable risk of career damage.</p>
+                        <span class="hidden" data-id="retaliation-val">50</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- END Main Content Wrapper -->
+
+
+        <!-- Final Result Area -->
+        <div id="result-area" class="p-4 sm:p-6 shadow-xl transition-colors-all border-t-4 border-gray-700 bg-gray-800 rounded-xl">
+            <div class="flex flex-col sm:flex-row items-center justify-between">
+                <div class="text-center sm:text-left mb-3 sm:mb-0">
+                    <p class="text-base font-medium text-gray-400">Final Calculated Net Utility Score:</p>
+                    <div id="net-utility-display" class="text-4xl font-extrabold transition-colors-all">
+                        0.0
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Utility > 0 means LIKELY to Report.</p>
+                </div>
+                
+                <div id="reporting-status" class="w-full sm:w-auto px-6 py-3 rounded-lg text-white font-bold text-lg text-center transition-colors-all shadow-lg">
+                    Status
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Final Result Area -->
+
+    <!-- SWEEP RESULTS MODAL -->
+    <div id="sweep-modal" class="hidden fixed inset-0 bg-darkBg/90 backdrop-blur-sm z-50 overflow-y-auto transition-opacity duration-300">
+        <div class="max-w-7xl mx-auto my-8 p-6 bg-darkCard rounded-xl shadow-2xl border border-gray-700">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-3xl font-extrabold text-report">Sweep Simulation Results</h2>
+                
+                <div class="flex space-x-3 items-center">
+                    <!-- EXPORT BUTTON -->
+                    <button id="export-sweep-results" class="px-4 py-2 bg-benefit hover:bg-benefit/80 text-white font-semibold rounded-lg shadow-md transition-colors-all flex items-center text-sm disabled:opacity-50" title="Download the full simulation data as a CSV file.">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Export CSV
+                    </button>
+                    <!-- END EXPORT BUTTON -->
+
+                    <button id="close-sweep-modal" class="text-gray-400 hover:text-white transition-colors-all">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- CHARTS SECTION -->
+            <div class="grid lg:grid-cols-2 gap-6 mb-6">
+                <div class="p-4 bg-gray-800 rounded-lg border border-report/50">
+                    <h3 class="text-lg font-semibold text-white mb-2">Net Utility vs. Hazard Rate (Risk-Reward View)</h3>
+                    <canvas id="hazard-utility-chart" class="bg-darkBg p-3 rounded-lg"></canvas>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg border border-report/50">
+                    <h3 class="text-lg font-semibold text-white mb-2">Input Level Impact on Reporting (Avg Net Utility)</h3>
+                    <canvas id="input-impact-chart" class="bg-darkBg p-3 rounded-lg"></canvas>
+                </div>
+            </div>
+            <!-- END CHARTS SECTION -->
+            
+            <div id="sweep-explanation-container" class="mb-6 p-4 bg-gray-800 rounded-lg border border-report/50">
+                <p class="text-lg font-semibold text-white mb-2">Qualitative Analysis</p>
+                <div id="sweep-explanation" class="text-gray-300">
+                    <div class="flex items-center text-report">
+                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        Generating expert analysis...
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-gray-400 mb-4 text-sm">Showing 7 key scenarios and 1000 random scenarios for a total of 1007 scenarios.</p>
+            
+            <div class="overflow-x-auto rounded-lg border border-gray-600 shadow-xl">
+                <table id="sweep-results-table" class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800 sticky top-0">
+                        <tr>
+                            <!-- Input Headers: B(adness), H(istory), Mon(itoring), Org(Factors), Sen(sitivity), Pow(er), Int(ervention), San(ction), Sup(port), Sti(gma), Ret(aliation) -->
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">B</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">H</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Mon</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Org</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sen</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Pow</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Int</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">San</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sup</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sti</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ret</th>
+                            <!-- Outputs Headers -->
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700/50">Pi</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700/50">Haz</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700/50">Sev</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700/50">NET UTILITY</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700/50">Decision</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sweep-table-body" class="bg-gray-900 divide-y divide-gray-800">
+                        <!-- Table rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <p id="sweep-loading-text" class="text-center text-report mt-4 hidden">
+                <svg class="animate-spin inline-block mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                Processing 1007 scenarios...
+            </p>
+        </div>
+    </div>
+    <!-- END SWEEP RESULTS MODAL -->
+
+<script>
+    // --- Model Parameters (Coefficients and Baselines) ---
+    // All coefficients are set to 1.0 for simplified interaction
+    const ALPHA_0 = 10; // Baseline Propensity
+    const SEVERITY_MIDPOINT = 50; // Used for scaling sanctions based on calculated severity
+    const COEF = {
+        alpha_b: 1.0, alpha_h: 1.0, alpha_c: 1.0, // Eq 7
+        sigma: 1.0, // Eq 6
+        kappa_1: 1.0, kappa_2: 1.0, kappa_3: 1.0, // Eq 8
+        rho_b: 1.0, rho_s: 1.0, xi_1: 1.0, xi_2: 1.0, // Eq 9
+    };
+    
+    // --- SWEEP CONFIGURATION ---
+    const NUM_RANDOM_SCENARIOS = 1000; // Increased from 53
+    // ---------------------------
+
+    // --- Global Chart Instances and Data Storage ---
+    let hazardUtilityChartInstance = null;
+    let inputImpactChartInstance = null;
+    let lastSweepResults = []; // Store the results for export
+    
+    // --- DOM Element References ---
+    const netUtilityDisplay = document.getElementById('net-utility-display');
+    const reportingStatus = document.getElementById('reporting-status');
+    const resultArea = document.getElementById('result-area');
+    const scenarioCard = document.getElementById('scenario-card');
+    const currentScoreSummary = document.getElementById('current-score-summary');
+    const inputContainers = document.querySelectorAll('[data-input-id]');
+    
+    // Intermediate Score Displays
+    const propensityScoreDisplay = document.getElementById('propensity-score');
+    const hazardScoreDisplay = document.getElementById('hazard-score');
+    const severityScoreDisplay = document.getElementById('severity-score');
+    const effectiveSanctionDisplay = document.getElementById('effective-sanction-display');
+
+    // SWEEP Elements and Config
+    const sweepButton = document.getElementById('sweep-button');
+    const sweepModal = document.getElementById('sweep-modal');
+    const closeSweepModalButton = document.getElementById('close-sweep-modal');
+    const exportSweepButton = document.getElementById('export-sweep-results'); 
+    const sweepTableBody = document.getElementById('sweep-table-body');
+    const sweepLoadingText = document.getElementById('sweep-loading-text');
+    const sweepExplanation = document.getElementById('sweep-explanation');
+    const inputKeys = ['badness', 'history', 'monitoring', 'orgfactors', 'sensitivity', 'power', 'intervention', 'sanction', 'support', 'stigma', 'retaliation'];
+    const inputValues = [25, 50, 75];
+
+    // --- Qualitative Descriptions Mapping (Expanded) ---
+    const descriptions = {
+        badness: {
+            25: 'Low inherent tendency toward misconduct.',
+            50: 'Moderate inherent tendency toward misconduct.',
+            75: 'High inherent tendency toward misconduct.'
+        },
+        history: {
+            25: 'No significant previous incidents recorded.',
+            50: 'Few or mild previous incidents recorded.',
+            75: 'Frequent and/or severe past incidents recorded.'
+        },
+        monitoring: { // High value is GOOD (reduces hazard/propensity)
+            75: 'Strong, proactive monitoring reduces hazard.',
+            50: 'Standard, reactive monitoring in place.',
+            25: 'Weak or non-existent monitoring, high impunity.'
+        },
+        orgfactors: {
+            25: 'Highly professional and ethical organizational climate.',
+            50: 'Standard, neutral organizational climate.',
+            75: 'Toxic, high-stress, or permissive misconduct climate.'
+        },
+        sensitivity: {
+            25: 'Low personal sensitivity or low risk perception.',
+            50: 'Average sensitivity/risk perception.',
+            75: 'High personal sensitivity or high risk perception.'
+        },
+        power: {
+            25: 'Perpetrator and target have similar organizational power.',
+            50: 'Perpetrator has moderate authority over target.',
+            75: 'Perpetrator has extreme, unchecked power over target.'
+        },
+        intervention: { // High value is GOOD (reduces hazard/severity)
+            75: 'Strong, effective policies are in place and enforced.',
+            50: 'Standard policies exist but enforcement is inconsistent.',
+            25: 'Policies are weak, non-existent, or routinely ignored.'
+        },
+        sanction: {
+            25: 'Minimal consequences expected for perpetrator.',
+            50: 'Moderate chance of disciplinary action, outcome is uncertain.',
+            75: 'High expectation of full disciplinary action against the perpetrator.'
+        },
+        support: {
+            25: 'Almost no support is expected from peers or management.',
+            50: 'Reliable support network available, but not guaranteed to be consistent.',
+            75: 'Strong, visible organizational and peer support is assured.'
+        },
+        stigma: {
+            25: 'Little to no social or professional isolation expected.',
+            50: 'Noticeable but manageable social discomfort or isolation.',
+            75: 'Severe social ostracism or professional damage expected from peers.'
+        },
+        retaliation: {
+            25: 'Extremely low risk of job loss or career damage.',
+            50: 'Recognized but containable risk of career damage or demotion.',
+            75: 'High certainty of severe professional retaliation from management/perpetrator.'
+        }
+    };
+
+    /**
+     * Retrieves the numerical value for a specific input field.
+     * @param {string} id - The base ID of the input (e.g., 'sanction').
+     * @returns {number} The current numerical value (25, 50, or 75).
+     */
+    function getInputValue(id) {
+        // All values are stored in hidden spans with data-id="{id}-val"
+        const valueElement = document.querySelector(`[data-id="${id}-val"]`);
+        return valueElement ? parseFloat(valueElement.textContent) : 50; // Default to 50 if element missing
+    }
+
+    /**
+     * Updates the UI and numerical value when an input button is clicked.
+     * @param {Event} event - The click event.
+     */
+    function handleInputClick(event) {
+        const button = event.target.closest('.level-btn');
+        if (!button) return;
+
+        const container = button.closest('[data-input-id]');
+        const inputId = container.dataset.inputId;
+        const newValue = parseFloat(button.dataset.value);
+
+        // 1. Update active state for buttons
+        container.querySelectorAll('.level-btn').forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+
+        // 2. Update hidden numerical value
+        const valueSpan = document.querySelector(`[data-id="${inputId}-val"]`);
+        if (valueSpan) {
+            valueSpan.textContent = newValue;
+        }
+
+        // 3. Update qualitative description
+        const descElement = document.getElementById(`${inputId}-qualitative`);
+        if (descElement) {
+            descElement.textContent = descriptions[inputId][newValue];
+        }
+
+        // 4. Recalculate simulation
+        updateSimulation();
+    }
+
+    /**
+     * Runs the simulation for a single configuration.
+     * @param {Object} inputConfig - An object containing all 11 input values.
+     * @returns {Object} The calculated output scores.
+     */
+    function runSingleSimulation(inputConfig) {
+        // --- Step 1: Calculate Propensity ---
+        // Pi_per = alpha_b * B(B_i) + alpha_h * H^{past}_i - alpha_c * C(t) + alpha_0
+        const Pi_per = COEF.alpha_b * inputConfig.badness + COEF.alpha_h * inputConfig.history - COEF.alpha_c * inputConfig.monitoring + ALPHA_0;
+
+        // --- Step 2: Calculate Hazard & Severity ---
+        // lambda_har = sigma * Pi_per + Omega_ij,E + SE - Lambda_E
+        const lambda_har = COEF.sigma * Pi_per + inputConfig.orgfactors + inputConfig.sensitivity - inputConfig.intervention;
+        // Severity ~ k1 * Pi_per + k2 * Power - k3 * Lambda_E
+        const severity = COEF.kappa_1 * Pi_per + COEF.kappa_2 * inputConfig.power - COEF.kappa_3 * inputConfig.intervention;
+
+        // --- Step 3: Calculate Net Utility ---
+        const E_Sanction_Base = inputConfig.sanction; 
+        const severityMultiplier = 1 + (severity - SEVERITY_MIDPOINT) / SEVERITY_MIDPOINT; 
+        const Effective_E_Sanction = E_Sanction_Base * Math.max(0.1, severityMultiplier); 
+
+        // Net Utility = rho_b * E[Sanction] + rho_s * Support - xi_1 * Stigma - xi_2 * Retaliation
+        const totalBenefits = (COEF.rho_b * Effective_E_Sanction) + (COEF.rho_s * inputConfig.support);
+        const totalCosts = (COEF.xi_1 * inputConfig.stigma) + (COEF.xi_2 * inputConfig.retaliation);
+        const netUtility = totalBenefits - totalCosts;
+
+        return {
+            Pi_per: parseFloat(Pi_per.toFixed(1)),
+            lambda_har: parseFloat(lambda_har.toFixed(1)),
+            severity: parseFloat(severity.toFixed(1)),
+            effectiveSanction: parseFloat(Effective_E_Sanction.toFixed(1)),
+            netUtility: parseFloat(netUtility.toFixed(1)),
+            decision: netUtility > 0 ? 'REPORT' : 'NO REPORT'
+        };
+    }
+
+    function calculatePropensity() {
+        const inputConfig = {};
+        inputKeys.forEach(key => inputConfig[key] = getInputValue(key));
+        
+        // Eq 7: Pi_per = alpha_0 + alpha_b * B(B_i) + alpha_h * H^{past}_i - alpha_c * C(t)
+        const Pi_per = COEF.alpha_b * inputConfig.badness + COEF.alpha_h * inputConfig.history - COEF.alpha_c * inputConfig.monitoring + ALPHA_0;
+        return Pi_per;
+    }
+
+    function calculateHazard(Pi_per) {
+        const Omega = getInputValue('orgfactors');
+        const SE = getInputValue('sensitivity');
+        const Lambda = getInputValue('intervention');
+
+        // Eq 6: lambda_har = sigma * Pi_per + Omega_ij,E + SE - Lambda_E
+        const lambda_har = COEF.sigma * Pi_per + Omega + SE - Lambda;
+        return lambda_har;
+    }
+
+    function calculateSeverity(Pi_per) {
+        const Power = getInputValue('power');
+        const Lambda = getInputValue('intervention');
+
+        // Eq 8 Simplified Score: Severity ~ k1 * Pi_per + k2 * Power - k3 * Lambda_E
+        const severity = COEF.kappa_1 * Pi_per + COEF.kappa_2 * Power - COEF.kappa_3 * Lambda;
+        return severity;
+    }
+
+    function updateSimulation() {
+        // --- Stage 1 & 2 Calculations ---
+        const Pi_per = calculatePropensity();
+        const lambda_har = calculateHazard(Pi_per);
+        const severity = calculateSeverity(Pi_per);
+        
+        propensityScoreDisplay.textContent = Pi_per.toFixed(1);
+        hazardScoreDisplay.textContent = lambda_har.toFixed(1);
+        severityScoreDisplay.textContent = severity.toFixed(1);
+
+        // --- Stage 3: Reporting Decision (Net Utility) ---
+        // 1. Get current values for the target's perception (Eq 9 inputs)
+        const E_Sanction_Base = getInputValue('sanction'); 
+        const Support = getInputValue('support');
+        const Stigma = getInputValue('stigma');
+        const Retaliation = getInputValue('retaliation');
+
+        // INTEGRATION: Use calculated Event Severity to determine the Effective Expected Sanction.
+        const severityMultiplier = 1 + (severity - SEVERITY_MIDPOINT) / SEVERITY_MIDPOINT; 
+        
+        // Apply the multiplier, ensuring a minimum effective sanction expectation
+        const Effective_E_Sanction = E_Sanction_Base * Math.max(0.1, severityMultiplier); 
+        
+        effectiveSanctionDisplay.textContent = Effective_E_Sanction.toFixed(1);
+
+
+        // 2. Calculate Benefits (using the effective, scaled sanction)
+        const totalBenefits = (COEF.rho_b * Effective_E_Sanction) + (COEF.rho_s * Support);
+
+        // 3. Calculate Costs
+        const totalCosts = (COEF.xi_1 * Stigma) + (COEF.xi_2 * Retaliation);
+
+        // 4. Calculate Net Utility (Decision Variable)
+        const netUtility = totalBenefits - totalCosts;
+
+        // 5. Update Final Result Display and Styling
+        const score = netUtility.toFixed(1);
+        netUtilityDisplay.textContent = score;
+        currentScoreSummary.textContent = score;
+        
+        // Remove previous styles
+        reportingStatus.classList.remove('bg-report', 'bg-noReport');
+        netUtilityDisplay.classList.remove('text-report', 'text-noReport');
+        scenarioCard.classList.remove('bg-noReport/5', 'bg-report/5');
+        
+        // Apply dynamic styling (colors, borders)
+        if (netUtility > 0) {
+            // Decision is to Report
+            reportingStatus.textContent = "✅ LIKELY TO REPORT";
+            reportingStatus.classList.add('bg-report');
+            netUtilityDisplay.classList.add('text-report');
+            scenarioCard.classList.add('bg-report/5');
+            resultArea.style.borderColor = '#60A5FA'; // Blue border
+        } else {
+            // Decision is NOT to Report
+            reportingStatus.textContent = "❌ NOT LIKELY TO REPORT";
+            reportingStatus.classList.add('bg-noReport');
+            netUtilityDisplay.classList.add('text-noReport');
+            scenarioCard.classList.add('bg-noReport/5');
+            resultArea.style.borderColor = '#FBBF24'; // Amber border
+        }
+    }
+
+    // Key Scenarios for the Sweep (11 inputs: B, H, Mon, Org, Sen, Pow, Int, San, Sup, Sti, Ret)
+    const inputKeyMap = { B: 'badness', H: 'history', Mon: 'monitoring', Org: 'orgfactors', Sen: 'sensitivity', Pow: 'power', Int: 'intervention', San: 'sanction', Sup: 'support', Sti: 'stigma', Ret: 'retaliation' };
+    const keyScenarios = [
+        // 1. Max Utility (Max Benefits, Min Costs, Max Severity Multiplier)
+        { B: 75, H: 75, Mon: 25, Org: 75, Sen: 75, Pow: 75, Int: 25, San: 75, Sup: 75, Sti: 25, Ret: 25, name: "Max Utility" },
+        // 2. Min Utility (Min Benefits, Max Costs, Min Severity Multiplier)
+        { B: 25, H: 25, Mon: 75, Org: 25, Sen: 25, Pow: 25, Int: 75, San: 25, Sup: 25, Sti: 75, Ret: 75, name: "Min Utility" },
+        // 3. Max Hazard (High Pi_per, High Org/Sen, Low Int)
+        { B: 75, H: 75, Mon: 25, Org: 75, Sen: 75, Pow: 50, Int: 25, San: 50, Sup: 50, Sti: 50, Ret: 50, name: "Max Hazard" },
+        // 4. Max Severity (High Pi_per, High Power, Low Int)
+        { B: 75, H: 75, Mon: 25, Org: 50, Sen: 50, Pow: 75, Int: 25, San: 50, Sup: 50, Sti: 50, Ret: 50, name: "Max Severity" },
+        // 5. High Hazard, NO Report (Max Hazard inputs, Max Reporting Costs, Min Sanction/Support)
+        { B: 75, H: 75, Mon: 25, Org: 75, Sen: 75, Pow: 75, Int: 25, San: 25, Sup: 25, Sti: 75, Ret: 75, name: "High Haz/No Report" },
+        // 6. Low Hazard, YES Report (Min Hazard inputs, Max Reporting Benefits, Min Stigma/Retaliation)
+        { B: 25, H: 25, Mon: 75, Org: 25, Sen: 25, Pow: 25, Int: 75, San: 75, Sup: 75, Sti: 25, Ret: 25, name: "Low Haz/Yes Report" },
+        // 7. Neutral Baseline (All Medium)
+        { B: 50, H: 50, Mon: 50, Org: 50, Sen: 50, Pow: 50, Int: 50, San: 50, Sup: 50, Sti: 50, Ret: 50, name: "Neutral Baseline" }
+    ];
+
+    function generateRandomScenario() {
+        const scenario = {};
+        inputKeys.forEach(key => {
+            // Get a random value from [25, 50, 75]
+            scenario[key] = inputValues[Math.floor(Math.random() * inputValues.length)];
+        });
+        scenario.name = 'Random Scenario';
+        return scenario;
+    }
+    
+    /**
+     * Renders the Chart.js visualizations based on sweep results.
+     * @param {Array} results - The array of all scenario results.
+     */
+    function renderCharts(results) {
+        // Destroy previous charts if they exist
+        if (hazardUtilityChartInstance) hazardUtilityChartInstance.destroy();
+        if (inputImpactChartInstance) inputImpactChartInstance.destroy();
+
+        const colors = tailwind.config.theme.extend.colors;
+
+        // --- Chart 1: Net Utility vs. Hazard Rate (Scatter Plot) ---
+        
+        // Data preparation for Scatter Plot
+        const reportData = results.filter(r => r.outputs.decision === 'REPORT').map(r => ({
+            x: r.outputs.lambda_har,
+            y: r.outputs.netUtility
+        }));
+        const noReportData = results.filter(r => r.outputs.decision === 'NO REPORT').map(r => ({
+            x: r.outputs.lambda_har,
+            y: r.outputs.netUtility
+        }));
+
+        const ctx1 = document.getElementById('hazard-utility-chart').getContext('2d');
+        hazardUtilityChartInstance = new Chart(ctx1, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Decision: REPORT',
+                        data: reportData,
+                        backgroundColor: colors.benefit,
+                        borderColor: colors.benefit,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                    },
+                    {
+                        label: 'Decision: NO REPORT',
+                        data: noReportData,
+                        backgroundColor: colors.cost,
+                        borderColor: colors.cost,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                aspectRatio: 1,
+                plugins: {
+                    title: { display: false },
+                    legend: { labels: { color: colors.darkText } },
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: { display: true, text: 'Hazard Rate (λ)', color: colors.report, font: { weight: 'bold' } },
+                        grid: { color: 'rgba(243, 244, 246, 0.1)' },
+                        ticks: { color: colors.darkText }
+                    },
+                    y: {
+                        title: { display: true, text: 'Net Utility (U)', color: colors.report, font: { weight: 'bold' } },
+                        grid: { 
+                            color: 'rgba(243, 244, 246, 0.1)',
+                            // Highlight the zero line
+                            drawOnChartArea: true,
+                            lineWidth: (context) => context.tick.value === 0 ? 3 : 1,
+                            color: (context) => context.tick.value === 0 ? colors.report : 'rgba(243, 244, 246, 0.1)',
+                        },
+                        ticks: { color: colors.darkText },
+                        border: { color: colors.darkText }
+                    }
+                }
+            }
+        });
+
+
+        // --- Chart 2: Input Impact (Bar Chart) ---
+
+        const impactMap = {};
+        inputKeys.forEach(key => impactMap[key] = { low: [], high: [] });
+
+        results.forEach(r => {
+            inputKeys.forEach(key => {
+                const value = r.inputs[key];
+                if (value === 25) {
+                    impactMap[key].low.push(r.outputs.netUtility);
+                } else if (value === 75) {
+                    impactMap[key].high.push(r.outputs.netUtility);
+                }
+            });
+        });
+
+        // Calculate averages and prepare chart data
+        const labels = [];
+        const avgLow = [];
+        const avgHigh = [];
+        
+        // Map of full keys to short, user-friendly labels
+        const labelMap = {
+            badness: 'Badness (B)', history: 'History (H)', monitoring: 'Monitoring (C)', 
+            orgfactors: 'Org Factors (Ω)', sensitivity: 'Sensitivity (S)', power: 'Power (P)', 
+            intervention: 'Intervention (Λ)', sanction: 'E[Sanction]', support: 'Support', 
+            stigma: 'Stigma (ξ₁)', retaliation: 'Retaliation (ξ₂)'
+        };
+
+        inputKeys.forEach(key => {
+            labels.push(labelMap[key]);
+            const low = impactMap[key].low;
+            const high = impactMap[key].high;
+            
+            const avgL = low.length ? low.reduce((a, b) => a + b, 0) / low.length : 0;
+            const avgH = high.length ? high.reduce((a, b) => a + b, 0) / high.length : 0;
+
+            avgLow.push(avgL.toFixed(1));
+            avgHigh.push(avgH.toFixed(1));
+        });
+
+        const ctx2 = document.getElementById('input-impact-chart').getContext('2d');
+        inputImpactChartInstance = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Input Set to Low (25)',
+                        data: avgLow,
+                        backgroundColor: colors.cost,
+                        borderColor: colors.cost,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Input Set to High (75)',
+                        data: avgHigh,
+                        backgroundColor: colors.benefit,
+                        borderColor: colors.benefit,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                aspectRatio: 1,
+                plugins: {
+                    title: { display: false },
+                    legend: { labels: { color: colors.darkText } }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(243, 244, 246, 0.1)' },
+                        ticks: { color: colors.darkText }
+                    },
+                    y: {
+                        title: { display: true, text: 'Average Net Utility (U)', color: colors.report, font: { weight: 'bold' } },
+                        grid: { 
+                            color: 'rgba(243, 244, 246, 0.1)',
+                            // Highlight the zero line
+                            drawOnChartArea: true,
+                            lineWidth: (context) => context.tick.value === 0 ? 3 : 1,
+                            color: (context) => context.tick.value === 0 ? colors.report : 'rgba(243, 244, 46, 0.1)',
+                        },
+                        ticks: { color: colors.darkText },
+                        border: { color: colors.darkText }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Converts the sweep results array into a CSV string and triggers download.
+     */
+    function exportSweepResultsToCSV() {
+        if (lastSweepResults.length === 0) {
+            console.error("No sweep data available to export.");
+            // Optional: Show a message to the user that no data is loaded
+            return;
+        }
+
+        // 1. Define Headers (Inputs + Outputs)
+        const inputHeaders = ['Badness_B', 'History_H', 'Monitoring_Mon', 'OrgFactors_Org', 'Sensitivity_Sen', 'Power_Pow', 'Intervention_Int', 'Sanction_San', 'Support_Sup', 'Stigma_Sti', 'Retaliation_Ret'];
+        const outputHeaders = ['Pi_Propensity', 'Lambda_Hazard', 'Severity_Score', 'Effective_Sanction', 'NET_UTILITY', 'Decision'];
+        const headers = ['Scenario_Name', ...inputHeaders, ...outputHeaders];
+        
+        // CSV content starts with the header row
+        let csvContent = headers.join(',') + '\n';
+
+        // 2. Map Data to CSV Rows
+        lastSweepResults.forEach(result => {
+            const inputValues = [
+                result.inputs.badness, result.inputs.history, result.inputs.monitoring,
+                result.inputs.orgfactors, result.inputs.sensitivity, result.inputs.power,
+                result.inputs.intervention, result.inputs.sanction, result.inputs.support,
+                result.inputs.stigma, result.inputs.retaliation
+            ];
+            
+            const outputValues = [
+                result.outputs.Pi_per, result.outputs.lambda_har, result.outputs.severity,
+                result.outputs.effectiveSanction, result.outputs.netUtility, result.outputs.decision
+            ];
+
+            // Wrap scenario name and decision in quotes just in case they contain commas
+            const row = [
+                `"${result.name.replace(/"/g, '""')}"`, 
+                ...inputValues,
+                result.outputs.Pi_per, result.outputs.lambda_har, result.outputs.severity,
+                result.outputs.effectiveSanction, result.outputs.netUtility, 
+                `"${result.outputs.decision}"`
+            ];
+            
+            csvContent += row.join(',') + '\n';
+        });
+
+        // 3. Trigger Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        const now = new Date().toISOString().slice(0, 10);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `simulation_sweep_results_${now}.csv`);
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url); // Clean up
+    }
+
+
+    async function runSweepSimulation() {
+        sweepButton.disabled = true;
+        sweepTableBody.innerHTML = '';
+        sweepExplanation.innerHTML = '';
+        sweepLoadingText.classList.remove('hidden');
+        sweepModal.classList.remove('hidden');
+
+        let allResults = [];
+        
+        // 1. Run Key Scenarios (7 Scenarios)
+        for (const scenario of keyScenarios) {
+            const inputConfig = {};
+            for (const [abbr, full] of Object.entries(inputKeyMap)) {
+                inputConfig[full] = scenario[abbr];
+            }
+            const results = runSingleSimulation(inputConfig);
+            allResults.push({
+                inputs: inputConfig,
+                outputs: results,
+                isKey: true,
+                name: scenario.name
+            });
+        }
+        
+        // 2. Generate and Run Random Scenarios (1000 Scenarios)
+        for (let i = 0; i < NUM_RANDOM_SCENARIOS; i++) {
+            const inputConfig = generateRandomScenario();
+            const results = runSingleSimulation(inputConfig);
+            allResults.push({
+                inputs: inputConfig,
+                outputs: results,
+                isKey: false,
+                name: inputConfig.name + ' ' + (i + 1) // Add a unique number to random scenarios
+            });
+        }
+        
+        // Store results globally before sorting/filtering for table display
+        lastSweepResults = allResults; 
+
+        // 3. Highlight Valuable Data Rows (Max/Min Utility, Max Hazard)
+        allResults.sort((a, b) => b.outputs.netUtility - a.outputs.netUtility); // Sort by Net Utility descending
+        
+        // Select key scenarios
+        const topUtility = allResults.slice(0, 3).map(r => ({ ...r, highlightType: 'Highest Utility' }));
+        const bottomUtility = allResults.slice(-3).map(r => ({ ...r, highlightType: 'Lowest Utility' }));
+        const maxHazard = allResults.reduce((max, current) => {
+            return current.outputs.lambda_har > max.outputs.lambda_har ? current : max;
+        }, allResults[0]);
+        maxHazard.highlightType = 'Max Hazard';
+
+        const highlightedScenarios = [
+            ...topUtility, 
+            ...bottomUtility, 
+            maxHazard
+        ].filter((v, i, a) => a.findIndex(t => (t.name === v.name && t.outputs.netUtility === v.outputs.netUtility)) === i); // Deduplicate
+
+        // Mark them in the main array for table rendering
+        const highlightedIds = new Set(highlightedScenarios.map(r => r.name + r.outputs.netUtility));
+
+        // Re-sort to show the 7 defined key scenarios first, then the rest by utility
+        allResults.sort((a, b) => {
+            if (a.isKey && !b.isKey) return -1;
+            if (!a.isKey && b.isKey) return 1;
+            return b.outputs.netUtility - a.outputs.netUtility;
+        });
+
+
+        allResults.forEach(r => {
+            if (highlightedIds.has(r.name + r.outputs.netUtility)) {
+                r.highlight = true;
+            }
+        });
+
+        // 4. Generate Table HTML
+        let tableHTML = '';
+        allResults.forEach(result => {
+            // Only render the key scenarios plus a small sample of random ones for performance
+            // We will limit the displayed table to the first 50 results (top performers and key scenarios)
+            if (allResults.indexOf(result) >= 50 && !result.isKey) return; 
+
+            const isHighlighted = result.highlight;
+            const rowClass = isHighlighted 
+                ? 'bg-yellow-900/50 hover:bg-yellow-800/70 border-l-4 border-yellow-400' 
+                : 'hover:bg-gray-800';
+            const utilityClass = result.outputs.decision === 'REPORT' ? 'text-benefit font-bold' : 'text-cost font-bold';
+            
+            // Generate the row
+            tableHTML += `<tr class="${rowClass}">`;
+            
+            // Input cells (in the order B, H, Mon, Org, Sen, Pow, Int, San, Sup, Sti, Ret)
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.badness}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.history}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.monitoring}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.orgfactors}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.sensitivity}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.power}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.intervention}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.sanction}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.support}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.stigma}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-300">${result.inputs.retaliation}</td>`;
+            
+            // Output cells
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-report bg-gray-700/50">${result.outputs.Pi_per}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-report bg-gray-700/50">${result.outputs.lambda_har}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-report bg-gray-700/50">${result.outputs.severity}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm ${utilityClass} bg-gray-700/50">${result.outputs.netUtility}</td>`;
+            tableHTML += `<td class="px-3 py-2 whitespace-nowrap text-sm text-white bg-gray-700/50">${result.outputs.decision}</td>`;
+            
+            tableHTML += '</tr>';
+        });
+
+        sweepTableBody.innerHTML = tableHTML;
+        sweepLoadingText.classList.add('hidden');
+        
+        // 5. Generate Charts (uses ALL results, not just the displayed 50)
+        renderCharts(allResults);
+
+
+        // 6. Call Gemini API for Qualitative Explanation
+        sweepExplanation.innerHTML = `
+            <div class="flex items-center text-report">
+                <svg class="animate-spin inline-block mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                Generating expert analysis...
+            </div>
+        `;
+
+        const analysisData = highlightedScenarios.map(r => ({
+            name: r.highlightType,
+            inputs: r.inputs,
+            outputs: r.outputs
+        }));
+
+        const systemPrompt = "You are a behavioral scientist specializing in organizational misconduct modeling. Analyze the provided simulation results and explain the key pattern or trait revealed by the extreme/edge-case scenarios. Provide a concise, professional explanation, focusing on which inputs (like Stigma $\\xi_1$, Retaliation $\\xi_2$, Intervention $\\Lambda_E$, or Badness $B_i$) dominated the outcome for Reporting Utility (Net Utility $U$). For all mathematical notation, use single dollar signs ($) as delimiters for inline math. Format the response as a single, coherent paragraph. DO NOT use any markdown formatting like asterisks (*), bold (**), or hashtags (#).";
+        const userQuery = `Analyze the following simulation scenarios and explain the findings:\n${JSON.stringify(analysisData, null, 2)}`;
+        const apiKey = ""
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        
+        const payload = {
+            contents: [{ parts: [{ text: userQuery }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            tools: [{ "google_search": {} }],
+        };
+
+        try {
+            let response;
+            let result;
+            let retryCount = 0;
+            const maxRetries = 5;
+
+            while (retryCount < maxRetries) {
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        retryCount++;
+                        const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue; // Retry the request
+                    }
+
+                    result = await response.json();
+                    break; // Success, exit loop
+
+                } catch (error) {
+                    retryCount++;
+                    const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+
+            let text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "Analysis failed to generate. Check console for API errors.";
+            
+            // FIX 1: Remove remaining Markdown bolding/italic characters
+            text = text.replace(/\*\*/g, '').replace(/\*/g, '');
+
+            // FIX 2 (The crucial fix): Remove extraneous parentheses around dollar-sign delimiters
+            text = text.replace(/ \(\$/g, ' $'); 
+            text = text.replace(/\$\)/g, '$');  
+
+            // 5. Update the display
+            sweepExplanation.innerHTML = `<p class="text-gray-300">${text}</p>`;
+            
+            // FIX 3: Tell MathJax to re-render the new content
+            if (window.MathJax) {
+                // Use typesetPromise to ensure the text is rendered correctly
+                MathJax.typesetPromise([sweepExplanation]).catch((err) => console.log('MathJax typeset error:', err));
+            }
+
+
+        } catch (error) {
+            console.error("Gemini API call failed:", error);
+            sweepExplanation.innerHTML = `<p class="text-red-400">Error: Failed to fetch qualitative analysis. Please check network connection or try again.</p>`;
+        }
+        
+        sweepButton.disabled = false;
+    }
+
+
+    // Attach click listeners to all button containers
+    inputContainers.forEach(container => {
+        container.addEventListener('click', handleInputClick);
+    });
+
+    // Attach click listener for Sweep button and modal close
+    sweepButton.addEventListener('click', runSweepSimulation);
+    closeSweepModalButton.addEventListener('click', () => {
+        sweepModal.classList.add('hidden');
+    });
+
+    // Attach click listener for export button
+    exportSweepButton.addEventListener('click', exportSweepResultsToCSV);
+
+
+    // Run the simulation once on load to initialize the display
+    updateSimulation();
+</script>
+
+</body>
+</html>
